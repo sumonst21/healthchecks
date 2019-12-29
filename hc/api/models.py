@@ -7,6 +7,7 @@ from datetime import datetime, timedelta as td
 
 from croniter import croniter
 from django.conf import settings
+from django.core.signing import TimestampSigner
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
@@ -45,6 +46,8 @@ CHANNEL_KINDS = (
     ("whatsapp", "WhatsApp"),
     ("apprise", "Apprise"),
     ("mattermost", "Mattermost"),
+    ("msteams", "Microsoft Teams"),
+    ("shell", "Shell Command"),
 )
 
 PO_PRIORITIES = {-2: "lowest", -1: "low", 0: "normal", 1: "high", 2: "emergency"}
@@ -70,6 +73,8 @@ class Check(models.Model):
     schedule = models.CharField(max_length=100, default="* * * * *")
     tz = models.CharField(max_length=36, default="UTC")
     subject = models.CharField(max_length=100, blank=True)
+    methods = models.CharField(max_length=30, blank=True)
+
     n_pings = models.IntegerField(default=0)
     last_ping = models.DateTimeField(null=True, blank=True)
     last_start = models.DateTimeField(null=True, blank=True)
@@ -368,7 +373,9 @@ class Channel(models.Model):
         emails.verify_email(self.email_value, {"verify_link": verify_link})
 
     def get_unsub_link(self):
-        args = [self.code, self.make_token()]
+        signer = TimestampSigner(salt="alerts")
+        signed_token = signer.sign(self.make_token())
+        args = [self.code, signed_token]
         verify_link = reverse("hc-unsubscribe-alerts", args=args)
         return settings.SITE_ROOT + verify_link
 
@@ -410,6 +417,10 @@ class Channel(models.Model):
             return transports.WhatsApp(self)
         elif self.kind == "apprise":
             return transports.Apprise(self)
+        elif self.kind == "msteams":
+            return transports.MsTeams(self)
+        elif self.kind == "shell":
+            return transports.Shell(self)
         else:
             raise NotImplementedError("Unknown channel kind: %s" % self.kind)
 
@@ -436,6 +447,10 @@ class Channel(models.Model):
         return "img/integrations/%s.png" % self.kind
 
     @property
+    def json(self):
+        return json.loads(self.value)
+
+    @property
     def po_priority(self):
         assert self.kind == "po"
         parts = self.value.split("|")
@@ -445,29 +460,7 @@ class Channel(models.Model):
     def webhook_spec(self, status):
         assert self.kind == "webhook"
 
-        if not self.value.startswith("{"):
-            parts = self.value.split("\n")
-            url_down = parts[0]
-            url_up = parts[1] if len(parts) > 1 else ""
-            post_data = parts[2] if len(parts) > 2 else ""
-
-            return {
-                "method": "POST" if post_data else "GET",
-                "url": url_down if status == "down" else url_up,
-                "body": post_data,
-                "headers": {},
-            }
-
         doc = json.loads(self.value)
-        if "post_data" in doc:
-            # Legacy "post_data" in doc -- use the legacy fields
-            return {
-                "method": "POST" if doc["post_data"] else "GET",
-                "url": doc["url_down"] if status == "down" else doc["url_up"],
-                "body": doc["post_data"],
-                "headers": doc["headers"],
-            }
-
         if status == "down" and "method_down" in doc:
             return {
                 "method": doc["method_down"],
@@ -498,6 +491,16 @@ class Channel(models.Model):
     @property
     def url_up(self):
         return self.up_webhook_spec["url"]
+
+    @property
+    def cmd_down(self):
+        assert self.kind == "shell"
+        return self.json["cmd_down"]
+
+    @property
+    def cmd_up(self):
+        assert self.kind == "shell"
+        return self.json["cmd_up"]
 
     @property
     def slack_team(self):
@@ -584,13 +587,6 @@ class Channel(models.Model):
         return self.value
 
     @property
-    def sms_label(self):
-        assert self.kind == "sms"
-        if self.value.startswith("{"):
-            doc = json.loads(self.value)
-            return doc["label"]
-
-    @property
     def trello_token(self):
         assert self.kind == "trello"
         if self.value.startswith("{"):
@@ -617,8 +613,7 @@ class Channel(models.Model):
         if not self.value.startswith("{"):
             return self.value
 
-        doc = json.loads(self.value)
-        return doc.get("value")
+        return self.json["value"]
 
     @property
     def email_notify_up(self):

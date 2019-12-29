@@ -1,16 +1,41 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## v1.12.0-dev - Unreleased
+
+### Improvements
+- "Filtering Rules" dialog, an option to require HTTP POST (#297)
+- Show Healthchecks version in Django admin header (#306)
+- Added JSON endpoint for Shields.io (#304)
+- Django 3.0
+- `senddeletionnotices` command skips profiles with recent last_active_date
+- The "Update Check" API call can update check's description (#311)
+
+### Bug Fixes
+- Don't set CSRF cookie on first visit. Signup is exempt from CSRF protection
+- Fix List-Unsubscribe email header value: add angle brackets
+- Unsubscribe links serve a form, and require HTTP POST to actually unsubscribe
+- For webhook integration, validate each header line separately
+- Fix "Send Test Notification" for webhooks that only fire on checks going up
+- Don't allow adding webhook integrations with both URLs blank
+- Don't allow adding email integrations with both "up" and "down" unchecked
+
+
+## v1.11.0 - 2019-11-22
 
 ### Improvements
 - In monthly reports, no downtime stats for the current month (month has just started)
+- Add Microsoft Teams integration (#135)
+- Add Profile.last_active_date field for more accurate inactive user detection
+- Add "Shell Commands" integration (#302)
+- PagerDuty integration works with or without PD_VENDOR_KEY (#303)
 
 ### Bug Fixes
  - On mobile, "My Checks" page, always show the gear (Details) button (#286)
  - Make log events fit better on mobile screens
 
-## 1.10.0 - 2019-10-21
+
+## v1.10.0 - 2019-10-21
 
 ### Improvements
 - Add the "Last Duration" field in the "My Checks" page (#257)
@@ -30,7 +55,7 @@ All notable changes to this project will be documented in this file.
 - Upgrade to Django 2.2.6 – fixes sqlite migrations (#284)
 
 
-## 1.9.0 - 2019-09-03
+## v1.9.0 - 2019-09-03
 
 ### Improvements
 - Show the number of downtimes and total downtime minutes in monthly reports (#104)
@@ -44,7 +69,7 @@ All notable changes to this project will be documented in this file.
 - Fix javascript code to construct correct URLs when running from a subdirectory (#273)
 - Don't show the "Sign Up" link in the login page if registration is closed (#280)
 
-## 1.8.0 - 2019-07-08
+## v1.8.0 - 2019-07-08
 
 ### Improvements
 - Add the `prunetokenbucket` management command
@@ -63,7 +88,7 @@ All notable changes to this project will be documented in this file.
 - Fix `prunepings` and `prunepingsslow`, they got broken when adding Projects (#264)
 
 
-## 1.7.0 - 2019-05-02
+## v1.7.0 - 2019-05-02
 
 ### Improvements
 - Add the EMAIL_USE_VERIFICATION configuration setting (#232)
@@ -76,7 +101,8 @@ All notable changes to this project will be documented in this file.
 - Show the Description section even if the description is missing. (#246)
 - Include the description in email alerts. (#247)
 
-## 1.6.0 - 2019-04-01
+
+## v1.6.0 - 2019-04-01
 
 ### Improvements
 - Add the "desc" field (check's description) to API responses
@@ -92,7 +118,7 @@ All notable changes to this project will be documented in this file.
 - Fix a "invalid time format" in front.views.status_single on Windows hosts
 
 
-## 1.5.0 - 2019-02-04
+## v1.5.0 - 2019-02-04
 
 ### Improvements
 - Database schema: add uniqueness constraint to Check.code
@@ -104,7 +130,7 @@ All notable changes to this project will be documented in this file.
 - Add the "My Projects" page
 
 
-## 1.4.0 - 2018-12-25
+## v1.4.0 - 2018-12-25
 
 ### Improvements
 - Set Pushover alert priorities for "down" and "up" events separately
@@ -122,7 +148,7 @@ All notable changes to this project will be documented in this file.
 - Validate and reject cron schedules with six components
 
 
-## 1.3.0 - 2018-11-21
+## v1.3.0 - 2018-11-21
 
 ### Improvements
 - Load settings from environment variables
@@ -142,7 +168,7 @@ All notable changes to this project will be documented in this file.
 - During DST transition, handle ambiguous dates as pre-transition
 
 
-## 1.2.0 - 2018-10-20
+## v1.2.0 - 2018-10-20
 
 ### Improvements
 - Content updates in the "Welcome" page.
@@ -157,7 +183,7 @@ All notable changes to this project will be documented in this file.
 - Fix hamburger menu button in "Login" page.
 
 
-## 1.1.0 - 2018-08-20
+## v1.1.0 - 2018-08-20
 
 ### Improvements
 - A new "Check Details" page.

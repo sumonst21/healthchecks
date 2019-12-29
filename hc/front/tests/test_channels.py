@@ -23,7 +23,18 @@ class ChannelsTestCase(BaseTestCase):
 
     def test_it_shows_webhook_post_data(self):
         ch = Channel(kind="webhook", project=self.project)
-        ch.value = "http://down.example.com\nhttp://up.example.com\nfoobar"
+        ch.value = json.dumps(
+            {
+                "method_down": "POST",
+                "url_down": "http://down.example.com",
+                "body_down": "foobar",
+                "headers_down": {},
+                "method_up": "GET",
+                "url_up": "http://up.example.com",
+                "body_up": "",
+                "headers_up": {},
+            }
+        )
         ch.save()
 
         self.client.login(username="alice@example.org", password="password")
@@ -96,9 +107,9 @@ class ChannelsTestCase(BaseTestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "(up only)")
 
-    def test_it_shows_sms_label(self):
+    def test_it_shows_sms_number(self):
         ch = Channel(kind="sms", project=self.project)
-        ch.value = json.dumps({"value": "+123", "label": "My Phone"})
+        ch.value = json.dumps({"value": "+123"})
         ch.save()
 
         self.client.login(username="alice@example.org", password="password")

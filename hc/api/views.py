@@ -14,6 +14,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
 from hc.api import schemas
 from hc.api.decorators import authorize, authorize_read, cors, validate_json
@@ -33,6 +34,9 @@ def ping(request, code, action="success"):
     method = headers["REQUEST_METHOD"]
     ua = headers.get("HTTP_USER_AGENT", "")
     body = request.body.decode()
+
+    if check.methods == "POST" and method != "POST":
+        action = "ign"
 
     check.ping(remote_addr, scheme, method, ua, body, action)
 
@@ -65,6 +69,9 @@ def _update(check, spec):
 
     if "tags" in spec:
         check.tags = spec["tags"]
+
+    if "desc" in spec:
+        check.desc = spec["desc"]
 
     if "timeout" in spec and "schedule" not in spec:
         check.kind = "simple"
@@ -200,8 +207,11 @@ def pause(request, code):
 
 @never_cache
 @cors("GET")
-def badge(request, badge_key, signature, tag, format="svg"):
+def badge(request, badge_key, signature, tag, fmt="svg"):
     if not check_signature(badge_key, tag, signature):
+        return HttpResponseNotFound()
+
+    if fmt not in ("svg", "json", "shields"):
         return HttpResponseNotFound()
 
     q = Check.objects.filter(project__badge_key=badge_key)
@@ -222,7 +232,7 @@ def badge(request, badge_key, signature, tag, format="svg"):
         if check_status == "down":
             down += 1
             status = "down"
-            if format == "svg":
+            if fmt == "svg":
                 # For SVG badges, we can leave the loop as soon as we
                 # find the first "down"
                 break
@@ -231,7 +241,16 @@ def badge(request, badge_key, signature, tag, format="svg"):
             if status == "up":
                 status = "late"
 
-    if format == "json":
+    if fmt == "shields":
+        color = "success"
+        if status == "down":
+            color = "critical"
+        elif status == "late":
+            color = "important"
+
+        return JsonResponse({"label": label, "message": status, "color": color})
+
+    if fmt == "json":
         return JsonResponse(
             {"status": status, "total": total, "grace": grace, "down": down}
         )
@@ -241,6 +260,7 @@ def badge(request, badge_key, signature, tag, format="svg"):
 
 
 @csrf_exempt
+@require_POST
 def bounce(request, code):
     notification = get_object_or_404(Notification, code=code)
 

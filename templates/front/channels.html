@@ -51,14 +51,6 @@
                             {% endif %}
                         {% elif ch.kind == "pd" %}
                             PagerDuty account <span>{{ ch.pd_account }}</span>
-                        {% elif ch.kind == "pagertree" %}
-                            PagerTree
-                        {% elif ch.kind == "pagerteam" %}
-                            Pager Team
-                        {% elif ch.kind == "opsgenie" %}
-                            OpsGenie
-                        {% elif ch.kind == "victorops" %}
-                            VictorOps
                         {% elif ch.kind == "po" %}
                             Pushover ({{ ch.po_priority }} priority)
                         {% elif ch.kind == "slack" %}
@@ -67,14 +59,6 @@
                                 team <span>{{ ch.slack_team }}</span>,
                                 channel <span>{{ ch.slack_channel }}</span>
                             {% endif %}
-                        {% elif ch.kind == "webhook" %}
-                            Webhook
-                        {% elif ch.kind == "apprise" %}
-                            Apprise
-                        {% elif ch.kind == "pushbullet" %}
-                            Pushbullet
-                        {% elif ch.kind == "discord" %}
-                            Discord
                         {% elif ch.kind == "telegram" %}
                             Telegram
                             {% if ch.telegram_type == "group" %}
@@ -82,8 +66,6 @@
                             {% elif ch.telegram_type == "private" %}
                                 user <span>{{ ch.telegram_name }}</span>
                             {% endif %}
-                        {% elif ch.kind == "hipchat" %}
-                            HipChat
                         {% elif ch.kind == "sms" %}
                             SMS to <span>{{ ch.sms_number }}</span>
                         {% elif ch.kind == "trello" %}
@@ -100,10 +82,8 @@
                             {% if ch.whatsapp_notify_up and not ch.whatsapp_notify_down %}
                                 (up only)
                             {% endif %}
-                        {% elif ch.kind == "mattermost" %}
-                            Mattermost
                         {% else %}
-                            {{ ch.kind }}
+                            {{ ch.get_kind_display }}
                         {% endif %}
                      </div>
                 </div>
@@ -252,6 +232,16 @@
         </li>
 
         <li>
+            <img src="{% static 'img/integrations/msteams.png' %}"
+                class="icon" alt="Microsoft Teams" />
+
+            <h2>Microsoft Teams</h2>
+            <p>Chat and collaboration platform for Microsoft Office 365 customers.</p>
+
+            <a href="{% url 'hc-add-msteams' %}" class="btn btn-primary">Add Integration</a>
+        </li>
+
+        <li>
             <img src="{% static 'img/integrations/opsgenie.png' %}"
                 class="icon" alt="OpsGenie icon" />
 
@@ -261,7 +251,6 @@
             <a href="{% url 'hc-add-opsgenie' %}" class="btn btn-primary">Add Integration</a>
         </li>
 
-        {% if enable_pd %}
         <li>
             <img src="{% static 'img/integrations/pd.png' %}"
                 class="icon" alt="PagerDuty icon" />
@@ -269,9 +258,12 @@
             <h2>PagerDuty</h2>
             <p>On-call scheduling, alerting, and incident tracking.</p>
 
-            <a href="{% url 'hc-add-pd' %}" class="btn btn-primary">Add Integration</a>
+            {% if enable_pdc %}
+                <a href="{% url 'hc-add-pdc' %}" class="btn btn-primary">Add Integration</a>
+            {% else %}
+                <a href="{% url 'hc-add-pd' %}" class="btn btn-primary">Add Integration</a>
+            {% endif %}
         </li>
-        {% endif %}
 
         <li>
             <img src="{% static 'img/integrations/pagerteam.png' %}"
@@ -314,6 +306,18 @@
             <p>Receive instant push notifications on your phone or tablet.</p>
 
             <a href="{% url 'hc-add-pushover' %}" class="btn btn-primary">Add Integration</a>
+        </li>
+        {% endif %}
+
+        {% if enable_shell %}
+        <li>
+            <img src="{% static 'img/integrations/shell.png' %}"
+                class="icon" alt="Shell icon" />
+
+            <h2>Shell Command</h2>
+            <p>Execute a local shell command when a check goes up or down.</p>
+
+            <a href="{% url 'hc-add-shell' %}" class="btn btn-primary">Add Integration</a>
         </li>
         {% endif %}
 
@@ -437,7 +441,7 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <button type="button" class="close" data-dismiss="modal">&times;</button>
-                    <h4 class="update-timeout-title">Integration Details</h4>
+                    <h4>Integration Details</h4>
                 </div>
                 <div class="modal-body">
                     <div class="form-group">
@@ -492,6 +496,19 @@
                             {% endif %}
                         {% endif %}
                     {% endwith %}
+                    {% endif %}
+
+
+                    {% if ch.kind == "shell" %}
+                        {% if ch.cmd_down %}
+                            <p><strong>Execute on "down" events:</strong></p>
+                            <pre>{{ ch.cmd_down }}</pre>
+                        {% endif %}
+
+                        {% if ch.cmd_up %}
+                            <p><strong>Execute on "up" events:</strong></p>
+                            <pre>{{ ch.cmd_up }}</pre>
+                        {% endif %}
                     {% endif %}
                 </div>
                 <div class="modal-footer">

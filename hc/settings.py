@@ -34,6 +34,13 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "healthchecks@example.org")
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL")
 USE_PAYMENTS = envbool("USE_PAYMENTS", "False")
 REGISTRATION_OPEN = envbool("REGISTRATION_OPEN", "True")
+VERSION = ""
+with open(os.path.join(BASE_DIR, "CHANGELOG.md"), encoding="utf-8") as f:
+    for line in f.readlines():
+        if line.startswith("## v"):
+            VERSION = line.split()[1]
+            break
+
 
 INSTALLED_APPS = (
     "django.contrib.admin",
@@ -206,6 +213,9 @@ MATRIX_ACCESS_TOKEN = os.getenv("MATRIX_ACCESS_TOKEN")
 
 # Apprise
 APPRISE_ENABLED = envbool("APPRISE_ENABLED", "False")
+
+# Local shell commands
+SHELL_ENABLED = envbool("SHELL_ENABLED", "False")
 
 
 if os.path.exists(os.path.join(BASE_DIR, "hc/local_settings.py")):

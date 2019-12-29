@@ -144,6 +144,7 @@ def logout(request):
 
 
 @require_POST
+@csrf_exempt
 def signup(request):
     if not settings.REGISTRATION_OPEN:
         return HttpResponseForbidden()
@@ -432,17 +433,28 @@ def change_email_done(request):
 
 
 @csrf_exempt
-def unsubscribe_reports(request, username):
+def unsubscribe_reports(request, signed_username):
+    # Some email servers open links in emails to check for malicious content.
+    # To work around this, for GET requests we serve a confirmation form.
+    # If the signature is more than 5 minutes old, we also include JS code to
+    # auto-submit the form.
+
+    ctx = {}
     signer = signing.TimestampSigner(salt="reports")
+    # First, check the signature without looking at the timestamp:
     try:
-        username = signer.unsign(username)
+        username = signer.unsign(signed_username)
     except signing.BadSignature:
         return render(request, "bad_link.html")
 
-    # Some email servers open links in emails to check for malicious content.
-    # To work around this, we serve a form that auto-submits with JS.
-    if "ask" in request.GET and request.method != "POST":
-        return render(request, "accounts/unsubscribe_submit.html")
+    # Check if timestamp is older than 5 minutes:
+    try:
+        username = signer.unsign(signed_username, max_age=300)
+    except signing.SignatureExpired:
+        ctx["autosubmit"] = True
+
+    if request.method != "POST":
+        return render(request, "accounts/unsubscribe_submit.html", ctx)
 
     user = User.objects.get(username=username)
     profile = Profile.objects.for_user(user)

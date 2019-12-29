@@ -1,3 +1,5 @@
+import os
+
 from django.conf import settings
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -7,6 +9,7 @@ from urllib.parse import quote, urlencode
 
 from hc.accounts.models import Profile
 from hc.lib import emails
+from hc.lib.string import replace
 
 try:
     import apprise
@@ -58,7 +61,11 @@ class Email(Transport):
 
         unsub_link = self.channel.get_unsub_link()
 
-        headers = {"X-Bounce-Url": bounce_url, "List-Unsubscribe": unsub_link}
+        headers = {
+            "X-Bounce-Url": bounce_url,
+            "List-Unsubscribe": "<%s>" % unsub_link,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        }
 
         try:
             # Look up the sorting preference for this email address
@@ -88,6 +95,48 @@ class Email(Transport):
             return not self.channel.email_notify_down
         else:
             return not self.channel.email_notify_up
+
+
+class Shell(Transport):
+    def prepare(self, template, check):
+        """ Replace placeholders with actual values. """
+
+        ctx = {
+            "$CODE": str(check.code),
+            "$STATUS": check.status,
+            "$NOW": timezone.now().replace(microsecond=0).isoformat(),
+            "$NAME": check.name,
+            "$TAGS": check.tags,
+        }
+
+        for i, tag in enumerate(check.tags_list()):
+            ctx["$TAG%d" % (i + 1)] = tag
+
+        return replace(template, ctx)
+
+    def is_noop(self, check):
+        if check.status == "down" and not self.channel.cmd_down:
+            return True
+
+        if check.status == "up" and not self.channel.cmd_up:
+            return True
+
+        return False
+
+    def notify(self, check):
+        if not settings.SHELL_ENABLED:
+            return "Shell commands are not enabled"
+
+        if check.status == "up":
+            cmd = self.channel.cmd_up
+        elif check.status == "down":
+            cmd = self.channel.cmd_down
+
+        cmd = self.prepare(cmd, check)
+        code = os.system(cmd)
+
+        if code != 0:
+            return "Command returned exit code %d" % code
 
 
 class HttpTransport(Transport):
@@ -143,39 +192,23 @@ class HttpTransport(Transport):
 
 class Webhook(HttpTransport):
     def prepare(self, template, check, urlencode=False):
-        """ Replace variables with actual values.
-
-        There should be no bad translations if users use $ symbol in
-        check's name or tags, because $ gets urlencoded to %24
-
-        """
+        """ Replace variables with actual values. """
 
         def safe(s):
             return quote(s) if urlencode else s
 
-        result = template
-        if "$CODE" in result:
-            result = result.replace("$CODE", str(check.code))
+        ctx = {
+            "$CODE": str(check.code),
+            "$STATUS": check.status,
+            "$NOW": safe(timezone.now().replace(microsecond=0).isoformat()),
+            "$NAME": safe(check.name),
+            "$TAGS": safe(check.tags),
+        }
 
-        if "$STATUS" in result:
-            result = result.replace("$STATUS", check.status)
+        for i, tag in enumerate(check.tags_list()):
+            ctx["$TAG%d" % (i + 1)] = safe(tag)
 
-        if "$NOW" in result:
-            s = timezone.now().replace(microsecond=0).isoformat()
-            result = result.replace("$NOW", safe(s))
-
-        if "$NAME" in result:
-            result = result.replace("$NAME", safe(check.name))
-
-        if "$TAGS" in result:
-            result = result.replace("$TAGS", safe(check.tags))
-
-        if "$TAG" in result:
-            for i, tag in enumerate(check.tags_list()):
-                placeholder = "$TAG%d" % (i + 1)
-                result = result.replace(placeholder, safe(tag))
-
-        return result
+        return replace(template, ctx)
 
     def is_noop(self, check):
         if check.status == "down" and not self.channel.url_down:
@@ -188,7 +221,8 @@ class Webhook(HttpTransport):
 
     def notify(self, check):
         spec = self.channel.webhook_spec(check.status)
-        assert spec["url"]
+        if not spec["url"]:
+            return "Empty webhook URL"
 
         url = self.prepare(spec["url"], check, urlencode=True)
         headers = {}
@@ -250,13 +284,12 @@ class PagerDuty(HttpTransport):
     def notify(self, check):
         description = tmpl("pd_description.html", check=check)
         payload = {
-            "vendor": settings.PD_VENDOR_KEY,
             "service_key": self.channel.pd_service_key,
             "incident_key": str(check.code),
             "event_type": "trigger" if check.status == "down" else "resolve",
             "description": description,
             "client": settings.SITE_NAME,
-            "client_url": settings.SITE_ROOT,
+            "client_url": check.details_url(),
         }
 
         return self.post(self.URL, json=payload)
@@ -479,7 +512,7 @@ class Apprise(HttpTransport):
 
         if not settings.APPRISE_ENABLED:
             # Not supported and/or enabled
-            return "Apprise is disabled and/or not installed."
+            return "Apprise is disabled and/or not installed"
 
         a = apprise.Apprise()
         title = tmpl("apprise_title.html", check=check)
@@ -498,3 +531,10 @@ class Apprise(HttpTransport):
             if not a.notify(body=body, title=title, notify_type=notify_type)
             else None
         )
+
+
+class MsTeams(HttpTransport):
+    def notify(self, check):
+        text = tmpl("msteams_message.json", check=check)
+        payload = json.loads(text)
+        return self.post(self.channel.value, json=payload)

@@ -27,7 +27,7 @@ class HeadersField(forms.Field):
             if not line.strip():
                 continue
 
-            if ":" not in value:
+            if ":" not in line:
                 raise ValidationError(self.message)
 
             n, v = line.split(":", maxsplit=1)
@@ -62,8 +62,9 @@ class NameTagsForm(forms.Form):
         return " ".join(result)
 
 
-class EmailSettingsForm(forms.Form):
+class FilteringRulesForm(forms.Form):
     subject = forms.CharField(max_length=100)
+    methods = forms.ChoiceField(required=False, choices=(("", "Any"), ("POST", "POST")))
 
 
 class TimeoutForm(forms.Form):
@@ -95,6 +96,15 @@ class AddEmailForm(forms.Form):
     down = forms.BooleanField(required=False, initial=True)
     up = forms.BooleanField(required=False, initial=True)
 
+    def clean(self):
+        super().clean()
+
+        down = self.cleaned_data.get("down")
+        up = self.cleaned_data.get("up")
+
+        if not down and not up:
+            self.add_error("down", "Please select at least one.")
+
 
 class AddUrlForm(forms.Form):
     error_css_class = "has-error"
@@ -120,6 +130,25 @@ class AddWebhookForm(forms.Form):
     url_up = forms.URLField(
         max_length=1000, required=False, validators=[WebhookValidator()]
     )
+
+    def clean(self):
+        super().clean()
+
+        url_down = self.cleaned_data.get("url_down")
+        url_up = self.cleaned_data.get("url_up")
+
+        if not url_down and not url_up:
+            self.add_error("url_down", "Enter a valid URL.")
+
+    def get_value(self):
+        return json.dumps(dict(self.cleaned_data), sort_keys=True)
+
+
+class AddShellForm(forms.Form):
+    error_css_class = "has-error"
+
+    cmd_down = forms.CharField(max_length=1000, required=False)
+    cmd_up = forms.CharField(max_length=1000, required=False)
 
     def get_value(self):
         return json.dumps(dict(self.cleaned_data), sort_keys=True)
@@ -165,3 +194,8 @@ class AddMatrixForm(forms.Form):
 class AddAppriseForm(forms.Form):
     error_css_class = "has-error"
     url = forms.CharField(max_length=512)
+
+
+class AddPdForm(forms.Form):
+    error_css_class = "has-error"
+    value = forms.CharField(max_length=32)

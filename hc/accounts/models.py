@@ -60,6 +60,7 @@ class Profile(models.Model):
     team_limit = models.IntegerField(default=2)
     sort = models.CharField(max_length=20, default="created")
     deletion_notice_date = models.DateTimeField(null=True, blank=True)
+    last_active_date = models.DateTimeField(null=True, blank=True)
 
     objects = ProfileManager()
 
@@ -173,7 +174,11 @@ class Profile(models.Model):
 
         unsub_url = self.reports_unsub_url()
 
-        headers = {"List-Unsubscribe": unsub_url, "X-Bounce-Url": unsub_url}
+        headers = {
+            "List-Unsubscribe": "<%s>" % unsub_url,
+            "X-Bounce-Url": unsub_url,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        }
 
         ctx = {
             "checks": checks,

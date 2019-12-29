@@ -20,8 +20,8 @@ It is live here: [http://healthchecks.io/](http://healthchecks.io/)
 
 The building blocks are:
 
-* Python 3
-* Django 2
+* Python 3.6+
+* Django 3
 * PostgreSQL or MySQL
 
 ## Setting Up for Development
@@ -134,6 +134,7 @@ Configurations settings loaded from environment variables:
 | MATRIX_USER_ID | `None`
 | MATRIX_ACCESS_TOKEN | `None`
 | APPRISE_ENABLED | `"False"`
+| SHELL_ENABLED | `"False"`
 
 
 Some useful settings keys to override are:
@@ -361,6 +362,17 @@ pip install apprise
 ```
 * enable the apprise functionality by setting the `APPRISE_ENABLED` environment variable.
 
+### Shell Commands
+
+The "Shell Commands" integration runs user-defined local shell commands when checks
+go up or down. This integration is disabled by default, and can be enabled by setting
+the `SHELL_ENABLED` environment variable to `True`.
+
+Note: be careful when using "Shell Commands" integration, and only enable it when
+you fully trust the users of your Healthchecks instance. The commands will be executed
+by the `manage.py sendalerts` process, and will run with the same system permissions as
+the `sendalerts` process.
+
 ## Running in Production
 
 Here is a non-exhaustive list of pointers and things to check before launching a Healthchecks instance
@@ -383,6 +395,7 @@ in production.
     Run the `manage.py collectstatic` command whenever files in the `/static/`
     directory change. This command collects all the static files inside the `static-collected` directory.
     Configure your web server to serve files from this directory under the `/static/` prefix.
+  * Database migration should be run after each update to make sure the database schemas are up to date. You can do that with `./manage.py migrate`.
 * Processes that need to be running constantly.
   * `manage.py runserver` is intended for development only. Do not use it in production,
     instead consider using [uWSGI](https://uwsgi-docs.readthedocs.io/en/latest/) or

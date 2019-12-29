@@ -34,18 +34,20 @@ from hc.api.models import (
 )
 from hc.api.transports import Telegram
 from hc.front.forms import (
+    AddAppriseForm,
+    AddEmailForm,
+    AddMatrixForm,
+    AddOpsGenieForm,
+    AddPdForm,
+    AddShellForm,
+    AddSmsForm,
+    AddUrlForm,
     AddWebhookForm,
+    ChannelNameForm,
+    CronForm,
+    FilteringRulesForm,
     NameTagsForm,
     TimeoutForm,
-    AddUrlForm,
-    AddEmailForm,
-    AddOpsGenieForm,
-    CronForm,
-    AddSmsForm,
-    ChannelNameForm,
-    EmailSettingsForm,
-    AddMatrixForm,
-    AddAppriseForm,
 )
 from hc.front.schemas import telegram_callback
 from hc.front.templatetags.hc_extras import num_down_title, down_title, sortchecks
@@ -115,8 +117,18 @@ def _get_project_for_user(request, project_code):
         raise Http404("not found")
 
 
+def _refresh_last_active_date(profile):
+    """ Update last_active_date if it is more than a day old. """
+
+    now = timezone.now()
+    if profile.last_active_date is None or (now - profile.last_active_date).days > 0:
+        profile.last_active_date = now
+        profile.save()
+
+
 @login_required
 def my_checks(request, code):
+    _refresh_last_active_date(request.profile)
     project = _get_project_for_user(request, code)
 
     if request.GET.get("sort") in VALID_SORT_VALUES:
@@ -241,10 +253,10 @@ def index(request):
         "enable_telegram": settings.TELEGRAM_TOKEN is not None,
         "enable_sms": settings.TWILIO_AUTH is not None,
         "enable_whatsapp": settings.TWILIO_USE_WHATSAPP,
-        "enable_pd": settings.PD_VENDOR_KEY is not None,
         "enable_trello": settings.TRELLO_APP_KEY is not None,
         "enable_matrix": settings.MATRIX_ACCESS_TOKEN is not None,
         "enable_apprise": settings.APPRISE_ENABLED is True,
+        "enable_shell": settings.SHELL_ENABLED is True,
         "registration_open": settings.REGISTRATION_OPEN,
     }
 
@@ -322,11 +334,12 @@ def update_name(request, code):
 
 @require_POST
 @login_required
-def email_settings(request, code):
+def filtering_rules(request, code):
     check = _get_check_for_user(request, code)
-    form = EmailSettingsForm(request.POST)
+    form = FilteringRulesForm(request.POST)
     if form.is_valid():
         check.subject = form.cleaned_data["subject"]
+        check.methods = form.cleaned_data["methods"]
         check.save()
 
     return redirect("hc-details", code)
@@ -470,6 +483,7 @@ def log(request, code):
 
 @login_required
 def details(request, code):
+    _refresh_last_active_date(request.profile)
     check = _get_check_for_user(request, code)
 
     channels = Channel.objects.filter(project=check.project)
@@ -576,7 +590,8 @@ def badges(request, code):
             {
                 "tag": tag,
                 "svg": get_badge_url(project.badge_key, tag),
-                "json": get_badge_url(project.badge_key, tag, format="json"),
+                "json": get_badge_url(project.badge_key, tag, fmt="json"),
+                "shields": get_badge_url(project.badge_key, tag, fmt="shields"),
             }
         )
 
@@ -636,10 +651,11 @@ def channels(request):
         "enable_telegram": settings.TELEGRAM_TOKEN is not None,
         "enable_sms": settings.TWILIO_AUTH is not None,
         "enable_whatsapp": settings.TWILIO_USE_WHATSAPP,
-        "enable_pd": settings.PD_VENDOR_KEY is not None,
+        "enable_pdc": settings.PD_VENDOR_KEY is not None,
         "enable_trello": settings.TRELLO_APP_KEY is not None,
         "enable_matrix": settings.MATRIX_ACCESS_TOKEN is not None,
         "enable_apprise": settings.APPRISE_ENABLED is True,
+        "enable_shell": settings.SHELL_ENABLED is True,
         "use_payments": settings.USE_PAYMENTS,
     }
 
@@ -685,18 +701,36 @@ def verify_email(request, code, token):
     return render(request, "bad_link.html")
 
 
-def unsubscribe_email(request, code, token):
-    channel = get_object_or_404(Channel, code=code)
+@csrf_exempt
+def unsubscribe_email(request, code, signed_token):
+    # Some email servers open links in emails to check for malicious content.
+    # To work around this, on GET requests we serve a confirmation form.
+    # If the signature is at least 5 minutes old, we also include JS code to
+    # auto-submit the form.
+    ctx = {}
+    if ":" in signed_token:
+        signer = signing.TimestampSigner(salt="alerts")
+        # First, check the signature without looking at the timestamp:
+        try:
+            token = signer.unsign(signed_token)
+        except signing.BadSignature:
+            return render(request, "bad_link.html")
+
+        # Check if timestamp is older than 5 minutes:
+        try:
+            signer.unsign(signed_token, max_age=300)
+        except signing.SignatureExpired:
+            ctx["autosubmit"] = True
+
+    else:
+        token = signed_token
+
+    channel = get_object_or_404(Channel, code=code, kind="email")
     if channel.make_token() != token:
         return render(request, "bad_link.html")
 
-    if channel.kind != "email":
-        return HttpResponseBadRequest()
-
-    # Some email servers open links in emails to check for malicious content.
-    # To work around this, we serve a form that auto-submits with JS.
-    if "ask" in request.GET and request.method != "POST":
-        return render(request, "accounts/unsubscribe_submit.html")
+    if request.method != "POST":
+        return render(request, "accounts/unsubscribe_submit.html", ctx)
 
     channel.delete()
     return render(request, "front/unsubscribe_success.html")
@@ -712,6 +746,12 @@ def send_test_notification(request, code):
     dummy = Check(name="TEST", status="down")
     dummy.last_ping = timezone.now() - td(days=1)
     dummy.n_pings = 42
+
+    if channel.kind == "webhook" and not channel.url_down:
+        if channel.url_up:
+            # If we don't have url_down, but do have have url_up then
+            # send "TEST is UP" notification instead:
+            dummy.status = "up"
 
     if channel.kind == "email":
         error = channel.transport.notify(dummy, channel.get_unsub_link())
@@ -805,6 +845,32 @@ def add_webhook(request):
     return render(request, "integrations/add_webhook.html", ctx)
 
 
+@login_required
+def add_shell(request):
+    if not settings.SHELL_ENABLED:
+        raise Http404("shell integration is not available")
+
+    if request.method == "POST":
+        form = AddShellForm(request.POST)
+        if form.is_valid():
+            channel = Channel(project=request.project, kind="shell")
+            channel.value = form.get_value()
+            channel.save()
+
+            channel.assign_all_checks()
+            return redirect("hc-channels")
+    else:
+        form = AddShellForm()
+
+    ctx = {
+        "page": "channels",
+        "project": request.project,
+        "form": form,
+        "now": timezone.now().replace(microsecond=0).isoformat(),
+    }
+    return render(request, "integrations/add_shell.html", ctx)
+
+
 def _prepare_state(request, session_key):
     state = get_random_string()
     request.session[session_key] = state
@@ -823,7 +889,25 @@ def _get_validated_code(request, session_key, key="code"):
     return request.GET.get(key)
 
 
-def add_pd(request, state=None):
+@login_required
+def add_pd(request):
+    if request.method == "POST":
+        form = AddPdForm(request.POST)
+        if form.is_valid():
+            channel = Channel(project=request.project, kind="pd")
+            channel.value = form.cleaned_data["value"]
+            channel.save()
+
+            channel.assign_all_checks()
+            return redirect("hc-channels")
+    else:
+        form = AddPdForm()
+
+    ctx = {"page": "channels", "form": form}
+    return render(request, "integrations/add_pd.html", ctx)
+
+
+def add_pdc(request, state=None):
     if settings.PD_VENDOR_KEY is None:
         raise Http404("pagerduty integration is not available")
 
@@ -853,13 +937,13 @@ def add_pd(request, state=None):
         return redirect("hc-channels")
 
     state = _prepare_state(request, "pd")
-    callback = settings.SITE_ROOT + reverse("hc-add-pd-state", args=[state])
+    callback = settings.SITE_ROOT + reverse("hc-add-pdc-state", args=[state])
     connect_url = "https://connect.pagerduty.com/connect?" + urlencode(
         {"vendor": settings.PD_VENDOR_KEY, "callback": callback}
     )
 
     ctx = {"page": "channels", "project": request.project, "connect_url": connect_url}
-    return render(request, "integrations/add_pd.html", ctx)
+    return render(request, "integrations/add_pdc.html", ctx)
 
 
 @login_required
@@ -1415,3 +1499,21 @@ def trello_settings(request):
     r = requests.get(url)
     ctx = {"token": token, "data": r.json()}
     return render(request, "integrations/trello_settings.html", ctx)
+
+
+@login_required
+def add_msteams(request):
+    if request.method == "POST":
+        form = AddUrlForm(request.POST)
+        if form.is_valid():
+            channel = Channel(project=request.project, kind="msteams")
+            channel.value = form.cleaned_data["value"]
+            channel.save()
+
+            channel.assign_all_checks()
+            return redirect("hc-channels")
+    else:
+        form = AddUrlForm()
+
+    ctx = {"page": "channels", "project": request.project, "form": form}
+    return render(request, "integrations/add_msteams.html", ctx)

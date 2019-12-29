@@ -5,7 +5,7 @@ from hc.front import views
 check_urls = [
     path("name/", views.update_name, name="hc-update-name"),
     path("details/", views.details, name="hc-details"),
-    path("email_settings/", views.email_settings, name="hc-email-settings"),
+    path("filtering_rules/", views.filtering_rules, name="hc-filtering-rules"),
     path("timeout/", views.update_timeout, name="hc-update-timeout"),
     path("pause/", views.pause, name="hc-pause"),
     path("remove/", views.remove_check, name="hc-remove-check"),
@@ -26,8 +26,10 @@ channel_urls = [
     path("", views.channels, name="hc-channels"),
     path("add_email/", views.add_email, name="hc-add-email"),
     path("add_webhook/", views.add_webhook, name="hc-add-webhook"),
+    path("add_shell/", views.add_shell, name="hc-add-shell"),
     path("add_pd/", views.add_pd, name="hc-add-pd"),
-    path("add_pd/<str:state>/", views.add_pd, name="hc-add-pd-state"),
+    path("add_pdc/", views.add_pdc, name="hc-add-pdc"),
+    path("add_pdc/<str:state>/", views.add_pdc, name="hc-add-pdc-state"),
     path("add_pagertree/", views.add_pagertree, name="hc-add-pagertree"),
     path("add_pagerteam/", views.add_pagerteam, name="hc-add-pagerteam"),
     path("add_slack/", views.add_slack, name="hc-add-slack"),
@@ -46,6 +48,7 @@ channel_urls = [
     path("add_trello/settings/", views.trello_settings, name="hc-trello-settings"),
     path("add_matrix/", views.add_matrix, name="hc-add-matrix"),
     path("add_apprise/", views.add_apprise, name="hc-add-apprise"),
+    path("add_msteams/", views.add_msteams, name="hc-add-msteams"),
     path("<uuid:code>/checks/", views.channel_checks, name="hc-channel-checks"),
     path("<uuid:code>/name/", views.update_channel_name, name="hc-channel-name"),
     path("<uuid:code>/test/", views.send_test_notification, name="hc-channel-test"),
@@ -54,7 +57,7 @@ channel_urls = [
         "<uuid:code>/verify/<slug:token>/", views.verify_email, name="hc-verify-email"
     ),
     path(
-        "<uuid:code>/unsub/<slug:token>/",
+        "<uuid:code>/unsub/<str:signed_token>/",
         views.unsubscribe_email,
         name="hc-unsubscribe-alerts",
     ),
